@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -14,6 +14,52 @@ const questionTypes = [
 ];
 
 const typeLabel = Object.fromEntries(questionTypes);
+
+function documentFieldKey(field) {
+  return `document:${field}`;
+}
+
+function questionFieldKey(questionId, field) {
+  return `${questionId}:${field}`;
+}
+
+function previewTargetKey(target) {
+  return target.questionId ? questionFieldKey(target.questionId, target.field) : documentFieldKey(target.field);
+}
+
+function previewElementKey(target) {
+  const key = previewTargetKey(target);
+  return Number.isInteger(target.choiceIndex) ? `${key}:${target.choiceIndex}` : key;
+}
+
+function previewEditableProps(target, onPreviewEdit) {
+  function activate(event) {
+    event.stopPropagation();
+    onPreviewEdit?.(target);
+  }
+
+  return {
+    role: "button",
+    tabIndex: 0,
+    title: "클릭해서 편집",
+    onClick: activate,
+    onKeyDown: (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        activate(event);
+      }
+    },
+  };
+}
+
+function previewEditableClassName(baseClass, activeFieldKey, target) {
+  return [
+    baseClass,
+    "preview-editable",
+    activeFieldKey === previewElementKey(target) ? "preview-editable-active" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 function createQuestion(number, kind = "passage") {
   const prompts = {
@@ -122,15 +168,19 @@ function normalizeChoiceLines(value) {
   return Array.from({ length: Math.max(5, lines.length) }, (_, index) => lines[index] || "");
 }
 
-function QuestionBody({ question }) {
+function QuestionBody({ activeFieldKey, onPreviewEdit, question }) {
   const passage = question.passage?.trim();
   if (!passage) return null;
+  const passageTarget = { questionId: question.id, field: "passage" };
 
   if (question.kind === "table") {
     const rows = parsePipeTable(passage);
     if (rows.length) {
       return (
-        <table className="exam-table">
+        <table
+          className={previewEditableClassName("exam-table", activeFieldKey, passageTarget)}
+          {...previewEditableProps(passageTarget, onPreviewEdit)}
+        >
           <tbody>
             {rows.map((row, rowIndex) => (
               <tr key={rowIndex}>
@@ -149,7 +199,10 @@ function QuestionBody({ question }) {
 
   if (question.kind === "notice" || question.kind === "dialogue") {
     return (
-      <div className="notice-box">
+      <div
+        className={previewEditableClassName("notice-box", activeFieldKey, passageTarget)}
+        {...previewEditableProps(passageTarget, onPreviewEdit)}
+      >
         {passage.split(/\r?\n/).map((line, index) => (
           <p key={index}>{line || "\u00a0"}</p>
         ))}
@@ -158,7 +211,10 @@ function QuestionBody({ question }) {
   }
 
   return (
-    <div className={mostlyLatin(passage) ? "passage latin" : "passage"}>
+    <div
+      className={previewEditableClassName(mostlyLatin(passage) ? "passage latin" : "passage", activeFieldKey, passageTarget)}
+      {...previewEditableProps(passageTarget, onPreviewEdit)}
+    >
       {passage.split(/\n\s*\n/).map((paragraph, index) => (
         <p key={index}>{paragraph.replace(/\s+/g, " ").trim()}</p>
       ))}
@@ -166,53 +222,110 @@ function QuestionBody({ question }) {
   );
 }
 
-function ExamQuestion({ question }) {
-  const visibleChoices = question.choices.filter((choice) => choice.trim());
+function ExamQuestion({ activeFieldKey, onPreviewEdit, question, selectedId }) {
+  const visibleChoices = question.choices
+    .map((choice, index) => ({ choice, index }))
+    .filter(({ choice }) => choice.trim());
+  const numberTarget = { questionId: question.id, field: "number" };
+  const promptTarget = { questionId: question.id, field: "prompt" };
+  const scoreTarget = { questionId: question.id, field: "score" };
   return (
-    <section className="exam-question">
+    <section className={`exam-question ${question.id === selectedId ? "preview-question-selected" : ""}`}>
       <h3>
-        <span>{question.number}.</span>
-        <span>
+        <span
+          className={previewEditableClassName("question-number", activeFieldKey, numberTarget)}
+          {...previewEditableProps(numberTarget, onPreviewEdit)}
+        >
+          {question.number}.
+        </span>
+        <span
+          className={previewEditableClassName("question-prompt", activeFieldKey, promptTarget)}
+          {...previewEditableProps(promptTarget, onPreviewEdit)}
+        >
           {question.prompt}
-          {question.score ? <em>[{question.score}점]</em> : null}
+          {question.score ? (
+            <em
+              className={previewEditableClassName("question-score", activeFieldKey, scoreTarget)}
+              {...previewEditableProps(scoreTarget, onPreviewEdit)}
+            >
+              [{question.score}점]
+            </em>
+          ) : null}
         </span>
       </h3>
-      <QuestionBody question={question} />
+      <QuestionBody activeFieldKey={activeFieldKey} onPreviewEdit={onPreviewEdit} question={question} />
       {visibleChoices.length ? (
         <ol className="choices">
-          {visibleChoices.slice(0, 5).map((choice, index) => (
-            <li key={index} className={mostlyLatin(choice) ? "latin" : ""}>
-              <span className="choice-mark">{choiceMarks[index]}</span>
-              <span>{choice}</span>
-            </li>
-          ))}
+          {visibleChoices.slice(0, 5).map(({ choice, index }, visibleIndex) => {
+            const choiceTarget = { questionId: question.id, field: "choices", choiceIndex: index };
+            return (
+              <li
+                key={index}
+                className={previewEditableClassName(mostlyLatin(choice) ? "latin" : "", activeFieldKey, choiceTarget)}
+                {...previewEditableProps(choiceTarget, onPreviewEdit)}
+              >
+                <span className="choice-mark">{choiceMarks[visibleIndex]}</span>
+                <span>{choice}</span>
+              </li>
+            );
+          })}
         </ol>
       ) : null}
     </section>
   );
 }
 
-function ExamPreview({ document }) {
-  const subject = document.title.replace(" 문제지", "") || "영어영역";
+function ExamPreview({ activeFieldKey, document, onPreviewEdit, selectedId }) {
+  const subject = (document.title || "").replace(" 문제지", "") || "영어영역";
+  const examTitleTarget = { field: "examTitle" };
+  const titleTarget = { field: "title" };
+  const formTarget = { field: "form" };
+  const copyrightTarget = { field: "copyright" };
   return (
     <article className="exam-page">
       <header className="exam-header">
-        <div className="exam-title">{document.examTitle}</div>
+        <div
+          className={previewEditableClassName("exam-title", activeFieldKey, examTitleTarget)}
+          {...previewEditableProps(examTitleTarget, onPreviewEdit)}
+        >
+          {document.examTitle || ""}
+        </div>
         <div className="exam-rule" />
         <div className="exam-meta">
           <span>제3교시</span>
-          <strong>{subject}</strong>
-          <span>{document.form}</span>
+          <strong
+            className={previewEditableClassName("", activeFieldKey, titleTarget)}
+            {...previewEditableProps(titleTarget, onPreviewEdit)}
+          >
+            {subject}
+          </strong>
+          <span
+            className={previewEditableClassName("", activeFieldKey, formTarget)}
+            {...previewEditableProps(formTarget, onPreviewEdit)}
+          >
+            {document.form || ""}
+          </span>
         </div>
         <div className="exam-rule" />
       </header>
       <main className="exam-columns">
         {document.questions.map((question) => (
-          <ExamQuestion key={question.id} question={question} />
+          <ExamQuestion
+            key={question.id}
+            activeFieldKey={activeFieldKey}
+            onPreviewEdit={onPreviewEdit}
+            question={question}
+            selectedId={selectedId}
+          />
         ))}
       </main>
       <footer className="exam-footer">
-        <span>{document.copyright}</span>
+        <span
+          className={previewEditableClassName("", activeFieldKey, copyrightTarget)}
+          {...previewEditableProps(copyrightTarget, onPreviewEdit)}
+        >
+          {document.copyright || ""}
+        </span>
         <b>1 1</b>
       </footer>
     </article>
@@ -231,12 +344,56 @@ function App() {
   });
   const [selectedId, setSelectedId] = useState(document.questions[0]?.id || "");
   const [dragId, setDragId] = useState("");
+  const [focusRequest, setFocusRequest] = useState(null);
   const importRef = useRef(null);
+  const fieldRefs = useRef({});
 
   const selected = useMemo(
     () => document.questions.find((question) => question.id === selectedId) || document.questions[0],
     [document.questions, selectedId],
   );
+  const activeFieldKey = focusRequest?.key || "";
+  const activePreviewKey = focusRequest ? previewElementKey(focusRequest) : "";
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const input = fieldRefs.current[focusRequest.key];
+    if (!input) return;
+
+    input.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.requestAnimationFrame(() => {
+      input.focus({ preventScroll: true });
+      if (
+        focusRequest.field === "choices" &&
+        Number.isInteger(focusRequest.choiceIndex) &&
+        typeof input.setSelectionRange === "function"
+      ) {
+        const lines = input.value.split("\n");
+        const start = lines
+          .slice(0, focusRequest.choiceIndex)
+          .reduce((total, line) => total + line.length + 1, 0);
+        const end = start + (lines[focusRequest.choiceIndex]?.length || 0);
+        input.setSelectionRange(start, end);
+      } else if (typeof input.select === "function") {
+        input.select();
+      }
+    });
+  }, [focusRequest]);
+
+  function bindField(key) {
+    return (node) => {
+      if (node) fieldRefs.current[key] = node;
+    };
+  }
+
+  function fieldLabelClassName(key, baseClass = "") {
+    return [baseClass, activeFieldKey === key ? "linked-field" : ""].filter(Boolean).join(" ") || undefined;
+  }
+
+  function focusPreviewTarget(target) {
+    if (target.questionId) setSelectedId(target.questionId);
+    setFocusRequest({ ...target, key: previewTargetKey(target), stamp: Date.now() });
+  }
 
   function updateDocument(next) {
     const value = typeof next === "function" ? next(document) : next;
@@ -387,7 +544,12 @@ function App() {
           </button>
         </div>
         <div className="paper-scroll">
-          <ExamPreview document={document} />
+          <ExamPreview
+            activeFieldKey={activePreviewKey}
+            document={document}
+            onPreviewEdit={focusPreviewTarget}
+            selectedId={selected?.id}
+          />
         </div>
       </section>
 
@@ -395,9 +557,45 @@ function App() {
         <h2>편집</h2>
         {selected ? (
           <div className="form-grid">
-            <label>
+            <label className={fieldLabelClassName(documentFieldKey("examTitle"), "wide")}>
+              시험지 제목
+              <input
+                ref={bindField(documentFieldKey("examTitle"))}
+                value={document.examTitle || ""}
+                onChange={(event) => updateDocument((doc) => ({ ...doc, examTitle: event.target.value }))}
+              />
+            </label>
+            <label className={fieldLabelClassName(documentFieldKey("title"))}>
+              영역명
+              <input
+                ref={bindField(documentFieldKey("title"))}
+                value={document.title || ""}
+                onChange={(event) => updateDocument((doc) => ({ ...doc, title: event.target.value }))}
+              />
+            </label>
+            <label className={fieldLabelClassName(documentFieldKey("form"))}>
+              형식
+              <input
+                ref={bindField(documentFieldKey("form"))}
+                value={document.form || ""}
+                onChange={(event) => updateDocument((doc) => ({ ...doc, form: event.target.value }))}
+              />
+            </label>
+            <label className={fieldLabelClassName(documentFieldKey("copyright"), "wide")}>
+              꼬리말
+              <input
+                ref={bindField(documentFieldKey("copyright"))}
+                value={document.copyright || ""}
+                onChange={(event) => updateDocument((doc) => ({ ...doc, copyright: event.target.value }))}
+              />
+            </label>
+            <label className={fieldLabelClassName(questionFieldKey(selected.id, "kind"))}>
               유형
-              <select value={selected.kind} onChange={(event) => patchQuestion(selected.id, { kind: event.target.value })}>
+              <select
+                ref={bindField(questionFieldKey(selected.id, "kind"))}
+                value={selected.kind}
+                onChange={(event) => patchQuestion(selected.id, { kind: event.target.value })}
+              >
                 {questionTypes.map(([kind, label]) => (
                   <option key={kind} value={kind}>
                     {label}
@@ -405,37 +603,47 @@ function App() {
                 ))}
               </select>
             </label>
-            <label>
+            <label className={fieldLabelClassName(questionFieldKey(selected.id, "number"))}>
               번호
-              <input value={selected.number} onChange={(event) => patchQuestion(selected.id, { number: event.target.value })} />
+              <input
+                ref={bindField(questionFieldKey(selected.id, "number"))}
+                value={selected.number}
+                onChange={(event) => patchQuestion(selected.id, { number: event.target.value })}
+              />
             </label>
-            <label>
+            <label className={fieldLabelClassName(questionFieldKey(selected.id, "score"))}>
               배점
-              <select value={selected.score} onChange={(event) => patchQuestion(selected.id, { score: event.target.value })}>
+              <select
+                ref={bindField(questionFieldKey(selected.id, "score"))}
+                value={selected.score}
+                onChange={(event) => patchQuestion(selected.id, { score: event.target.value })}
+              >
                 <option value="">없음</option>
                 <option value="2">2점</option>
                 <option value="3">3점</option>
               </select>
             </label>
-            <label>
-              형식
-              <input value={document.form} onChange={(event) => updateDocument((doc) => ({ ...doc, form: event.target.value }))} />
-            </label>
-            <label className="wide">
+            <label className={fieldLabelClassName(questionFieldKey(selected.id, "prompt"), "wide")}>
               발문
-              <textarea value={selected.prompt} onChange={(event) => patchQuestion(selected.id, { prompt: event.target.value })} />
+              <textarea
+                ref={bindField(questionFieldKey(selected.id, "prompt"))}
+                value={selected.prompt}
+                onChange={(event) => patchQuestion(selected.id, { prompt: event.target.value })}
+              />
             </label>
-            <label className="wide">
+            <label className={fieldLabelClassName(questionFieldKey(selected.id, "passage"), "wide")}>
               지문 / 안내문 / 표
               <textarea
+                ref={bindField(questionFieldKey(selected.id, "passage"))}
                 className="passage-editor"
                 value={selected.passage}
                 onChange={(event) => patchQuestion(selected.id, { passage: event.target.value })}
               />
             </label>
-            <label className="wide">
+            <label className={fieldLabelClassName(questionFieldKey(selected.id, "choices"), "wide")}>
               선택지
               <textarea
+                ref={bindField(questionFieldKey(selected.id, "choices"))}
                 value={selected.choices.join("\n")}
                 onChange={(event) => patchQuestion(selected.id, { choices: normalizeChoiceLines(event.target.value) })}
               />
@@ -447,4 +655,7 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+const rootElement = document.getElementById("root");
+const root = rootElement._latexVibeCoderRoot || createRoot(rootElement);
+rootElement._latexVibeCoderRoot = root;
+root.render(<App />);
