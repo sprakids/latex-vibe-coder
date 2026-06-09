@@ -600,7 +600,7 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <strong>LaTeX Vibe Coder</strong>
+          <strong>문제 편집기</strong>
           <span>GitHub Pages용 웹 편집기</span>
         </div>
         <nav>
