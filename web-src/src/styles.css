@@ -58,6 +58,12 @@ button:active {
   transform: translateY(1px);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+  transform: none;
+}
+
 .primary {
   color: white;
   border-color: #0f6de8;
@@ -328,6 +334,12 @@ input[type="range"] {
 
 .apply-all {
   width: 100%;
+}
+
+.question-edit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 input,

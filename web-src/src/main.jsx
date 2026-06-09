@@ -221,6 +221,10 @@ function normalizeChoiceLines(value) {
   return Array.from({ length: Math.max(5, lines.length) }, (_, index) => lines[index] || "");
 }
 
+function resequenceQuestions(questions, startNumber) {
+  return questions.map((question, index) => ({ ...question, number: startNumber + index }));
+}
+
 function QuestionBody({ activeFieldKey, onPreviewEdit, question }) {
   const passage = question.passage?.trim();
   if (!passage) return null;
@@ -497,20 +501,49 @@ function App() {
     const question = createQuestion(nextNumber, kind);
     updateDocument((doc) => ({ ...doc, questions: [...doc.questions, question] }));
     setSelectedId(question.id);
+    setFocusRequest({ questionId: question.id, field: "size", key: questionFieldKey(question.id, "size"), stamp: Date.now() });
   }
 
   function duplicateQuestion() {
     if (!selected) return;
     const clone = { ...selected, id: crypto.randomUUID(), number: Number(selected.number || 0) + 1 };
-    updateDocument((doc) => ({ ...doc, questions: [...doc.questions, clone] }));
+    const startNumber = Number(document.questions[0]?.number) || 1;
+    updateDocument((doc) => {
+      const list = [...doc.questions];
+      const sourceIndex = list.findIndex((question) => question.id === selected.id);
+      const targetIndex = sourceIndex < 0 ? list.length : sourceIndex + 1;
+      list.splice(targetIndex, 0, clone);
+      return { ...doc, questions: resequenceQuestions(list, startNumber) };
+    });
     setSelectedId(clone.id);
+    setFocusRequest({ questionId: clone.id, field: "size", key: questionFieldKey(clone.id, "size"), stamp: Date.now() });
   }
 
   function deleteQuestion() {
     if (!selected || document.questions.length <= 1) return;
-    const nextQuestions = document.questions.filter((question) => question.id !== selected.id);
-    updateDocument((doc) => ({ ...doc, questions: nextQuestions }));
-    setSelectedId(nextQuestions[0]?.id || "");
+    const selectedIndex = document.questions.findIndex((question) => question.id === selected.id);
+    const startNumber = Number(document.questions[0]?.number) || 1;
+    const nextQuestions = resequenceQuestions(
+      document.questions.filter((question) => question.id !== selected.id),
+      startNumber,
+    );
+    const nextSelected = nextQuestions[Math.min(Math.max(selectedIndex, 0), nextQuestions.length - 1)];
+    updateDocument((doc) => ({
+      ...doc,
+      questions: resequenceQuestions(
+        doc.questions.filter((question) => question.id !== selected.id),
+        startNumber,
+      ),
+    }));
+    setSelectedId(nextSelected?.id || "");
+    if (nextSelected) {
+      setFocusRequest({
+        questionId: nextSelected.id,
+        field: "size",
+        key: questionFieldKey(nextSelected.id, "size"),
+        stamp: Date.now(),
+      });
+    }
   }
 
   function reorder(fromId, toId) {
@@ -527,9 +560,10 @@ function App() {
   }
 
   function renumber() {
+    const startNumber = Number(document.questions[0]?.number) || 1;
     updateDocument((doc) => ({
       ...doc,
-      questions: doc.questions.map((question, index) => ({ ...question, number: index + 1 })),
+      questions: resequenceQuestions(doc.questions, startNumber),
     }));
   }
 
@@ -609,10 +643,10 @@ function App() {
           ))}
         </div>
         <div className="sidebar-actions">
-          <button onClick={duplicateQuestion}>복제</button>
+          <button onClick={duplicateQuestion}>문제 복사</button>
           <button onClick={renumber}>번호 정리</button>
-          <button className="danger" onClick={deleteQuestion}>
-            삭제
+          <button className="danger" disabled={document.questions.length <= 1} onClick={deleteQuestion}>
+            문제 삭제
           </button>
         </div>
       </aside>
@@ -689,6 +723,12 @@ function App() {
               <button className="apply-all" onClick={applySizingToAllQuestions}>
                 전체 문제에 적용
               </button>
+              <div className="question-edit-actions">
+                <button onClick={duplicateQuestion}>문제 복사</button>
+                <button className="danger" disabled={document.questions.length <= 1} onClick={deleteQuestion}>
+                  문제 삭제
+                </button>
+              </div>
             </div>
             <label className={fieldLabelClassName(documentFieldKey("examTitle"), "wide")}>
               시험지 제목
