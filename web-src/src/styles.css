@@ -210,9 +210,14 @@ button:disabled {
 }
 
 .inline-actions button,
-.page-panel .panel-title button {
+.page-actions button {
   padding: 8px 9px;
   white-space: nowrap;
+}
+
+.page-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .page-tabs {

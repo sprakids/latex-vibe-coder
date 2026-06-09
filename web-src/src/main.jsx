@@ -263,7 +263,7 @@ function normalizeDocument(input) {
   }));
   const validPageIds = new Set(pages.map((page) => page.id));
   const firstPageId = pages[0].id;
-  const rawQuestions = Array.isArray(raw.questions) && raw.questions.length ? raw.questions : fallback.questions;
+  const rawQuestions = Array.isArray(raw.questions) ? raw.questions : fallback.questions;
   const questions = rawQuestions.map((question, index) => {
     const kind = question?.kind || "passage";
     const base = createQuestion(Number(question?.number) || 18 + index, kind, firstPageId);
@@ -301,6 +301,10 @@ function orderedQuestions(document) {
 function resequenceDocument(document, startNumber = 18) {
   const ordered = orderedQuestions(document).map((question, index) => ({ ...question, number: startNumber + index }));
   return { ...document, questions: ordered };
+}
+
+function resequencePages(pages) {
+  return pages.map((page, index) => ({ ...page, title: `${index + 1}쪽` }));
 }
 
 function emptyStore() {
@@ -896,6 +900,31 @@ function App() {
     setScrollRequest({ pageId: page.id, stamp: Date.now() });
   }
 
+  function deletePage() {
+    if (!activePage || document.pages.length <= 1) return;
+    const targetPage = document.pages[activePageIndex + 1] || document.pages[activePageIndex - 1];
+    if (!targetPage) return;
+    const startNumber = Number(document.questions[0]?.number) || 18;
+    const remainingQuestions = document.questions.filter((question) => question.pageId !== activePage.id);
+    const nextSelected =
+      remainingQuestions.find((question) => question.pageId === targetPage.id) || remainingQuestions[0] || null;
+
+    updateDocument((doc) =>
+      resequenceDocument(
+        {
+          ...doc,
+          pages: resequencePages(doc.pages.filter((page) => page.id !== activePage.id)),
+          questions: doc.questions.filter((question) => question.pageId !== activePage.id),
+        },
+        startNumber,
+      ),
+    );
+    setActivePageId(targetPage.id);
+    setSelectedId(nextSelected?.id || "");
+    setFocusRequest(null);
+    setScrollRequest({ pageId: targetPage.id, stamp: Date.now() });
+  }
+
   function moveSelectedToPage(pageId) {
     if (!selected || selected.pageId === pageId) return;
     patchQuestion(selected.id, { pageId });
@@ -1076,7 +1105,12 @@ function App() {
         <section className="page-panel">
           <div className="panel-title">
             <h2>페이지</h2>
-            <button onClick={addPage}>추가</button>
+            <div className="page-actions">
+              <button onClick={addPage}>추가</button>
+              <button className="danger" disabled={document.pages.length <= 1} onClick={deletePage}>
+                삭제
+              </button>
+            </div>
           </div>
           <div className="page-tabs">
             {document.pages.map((page, index) => (
