@@ -3,6 +3,10 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 const choiceMarks = ["①", "②", "③", "④", "⑤"];
+const DEFAULT_QUESTION_SIZE = 100;
+const DEFAULT_FONT_SIZE = 100;
+const QUESTION_SIZE_RANGE = { min: 70, max: 140 };
+const FONT_SIZE_RANGE = { min: 70, max: 150 };
 
 const questionTypes = [
   ["passage", "지문형"],
@@ -61,6 +65,53 @@ function previewEditableClassName(baseClass, activeFieldKey, target) {
     .join(" ");
 }
 
+function clampPercent(value, range, fallback = 100) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(range.max, Math.max(range.min, Math.round(number)));
+}
+
+function questionSize(question) {
+  return clampPercent(question.size, QUESTION_SIZE_RANGE, DEFAULT_QUESTION_SIZE);
+}
+
+function questionFontSize(question) {
+  return clampPercent(question.fontSize, FONT_SIZE_RANGE, DEFAULT_FONT_SIZE);
+}
+
+function pt(value) {
+  return `${Number(value.toFixed(2))}pt`;
+}
+
+function questionStyle(question) {
+  const sizeScale = questionSize(question) / 100;
+  const fontScale = questionFontSize(question) / 100;
+  const effectiveFontScale = sizeScale * fontScale;
+  return {
+    "--question-margin-bottom": pt(8 * sizeScale),
+    "--question-font-size": pt(9.35 * effectiveFontScale),
+    "--question-heading-gap": pt(4 * sizeScale),
+    "--question-heading-margin-bottom": pt(3 * sizeScale),
+    "--question-heading-font-size": pt(10.2 * effectiveFontScale),
+    "--question-score-margin-left": pt(2 * sizeScale),
+    "--question-score-font-size": pt(9 * effectiveFontScale),
+    "--question-paragraph-margin-bottom": pt(4 * sizeScale),
+    "--question-choice-margin-top": pt(2 * sizeScale),
+    "--question-choice-gap": pt(5 * sizeScale),
+    "--question-choice-margin-bottom": pt(1.2 * sizeScale),
+    "--question-choice-mark-width": pt(12 * sizeScale),
+    "--question-notice-margin-top": pt(4 * sizeScale),
+    "--question-notice-margin-bottom": pt(5 * sizeScale),
+    "--question-notice-padding-y": pt(8 * sizeScale),
+    "--question-notice-padding-x": pt(9 * sizeScale),
+    "--question-table-margin-top": pt(5 * sizeScale),
+    "--question-table-margin-bottom": pt(6 * sizeScale),
+    "--question-table-font-size": pt(8.3 * effectiveFontScale),
+    "--question-table-padding-y": pt(3 * sizeScale),
+    "--question-table-padding-x": pt(4 * sizeScale),
+  };
+}
+
 function createQuestion(number, kind = "passage") {
   const prompts = {
     passage: "다음 글의 주제로 가장 적절한 것은?",
@@ -78,6 +129,8 @@ function createQuestion(number, kind = "passage") {
     prompt: prompts[kind] || prompts.custom,
     passage: "",
     choices: ["", "", "", "", ""],
+    size: DEFAULT_QUESTION_SIZE,
+    fontSize: DEFAULT_FONT_SIZE,
     answer: "",
     note: "",
   };
@@ -226,11 +279,25 @@ function ExamQuestion({ activeFieldKey, onPreviewEdit, question, selectedId }) {
   const visibleChoices = question.choices
     .map((choice, index) => ({ choice, index }))
     .filter(({ choice }) => choice.trim());
+  const sizeTarget = { questionId: question.id, field: "size" };
   const numberTarget = { questionId: question.id, field: "number" };
   const promptTarget = { questionId: question.id, field: "prompt" };
   const scoreTarget = { questionId: question.id, field: "score" };
+  const isSizingActive = activeFieldKey === previewElementKey(sizeTarget);
   return (
-    <section className={`exam-question ${question.id === selectedId ? "preview-question-selected" : ""}`}>
+    <section
+      className={[
+        "exam-question",
+        "preview-question-clickable",
+        question.id === selectedId ? "preview-question-selected" : "",
+        isSizingActive ? "preview-question-size-active" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={questionStyle(question)}
+      title="문제 크기 조정"
+      onClick={() => onPreviewEdit?.(sizeTarget)}
+    >
       <h3>
         <span
           className={previewEditableClassName("question-number", activeFieldKey, numberTarget)}
@@ -408,6 +475,23 @@ function App() {
     }));
   }
 
+  function patchQuestionSizing(field, value) {
+    if (!selected) return;
+    const range = field === "fontSize" ? FONT_SIZE_RANGE : QUESTION_SIZE_RANGE;
+    const fallback = field === "fontSize" ? DEFAULT_FONT_SIZE : DEFAULT_QUESTION_SIZE;
+    patchQuestion(selected.id, { [field]: clampPercent(value, range, fallback) });
+  }
+
+  function applySizingToAllQuestions() {
+    if (!selected) return;
+    const size = questionSize(selected);
+    const fontSize = questionFontSize(selected);
+    updateDocument((doc) => ({
+      ...doc,
+      questions: doc.questions.map((question) => ({ ...question, size, fontSize })),
+    }));
+  }
+
   function addQuestion(kind = "passage") {
     const nextNumber = Math.max(17, ...document.questions.map((q) => Number(q.number) || 0)) + 1;
     const question = createQuestion(nextNumber, kind);
@@ -557,6 +641,55 @@ function App() {
         <h2>편집</h2>
         {selected ? (
           <div className="form-grid">
+            <div className="sizing-panel wide">
+              <label className={fieldLabelClassName(questionFieldKey(selected.id, "size"), "sizing-label")}>
+                <span>문제 크기</span>
+                <div className="range-line">
+                  <input
+                    ref={bindField(questionFieldKey(selected.id, "size"))}
+                    type="range"
+                    min={QUESTION_SIZE_RANGE.min}
+                    max={QUESTION_SIZE_RANGE.max}
+                    value={questionSize(selected)}
+                    onChange={(event) => patchQuestionSizing("size", event.target.value)}
+                  />
+                  <input
+                    aria-label="문제 크기 값"
+                    className="percent-input"
+                    type="number"
+                    min={QUESTION_SIZE_RANGE.min}
+                    max={QUESTION_SIZE_RANGE.max}
+                    value={questionSize(selected)}
+                    onChange={(event) => patchQuestionSizing("size", event.target.value)}
+                  />
+                </div>
+              </label>
+              <label className={fieldLabelClassName(questionFieldKey(selected.id, "fontSize"), "sizing-label")}>
+                <span>폰트 크기</span>
+                <div className="range-line">
+                  <input
+                    ref={bindField(questionFieldKey(selected.id, "fontSize"))}
+                    type="range"
+                    min={FONT_SIZE_RANGE.min}
+                    max={FONT_SIZE_RANGE.max}
+                    value={questionFontSize(selected)}
+                    onChange={(event) => patchQuestionSizing("fontSize", event.target.value)}
+                  />
+                  <input
+                    aria-label="폰트 크기 값"
+                    className="percent-input"
+                    type="number"
+                    min={FONT_SIZE_RANGE.min}
+                    max={FONT_SIZE_RANGE.max}
+                    value={questionFontSize(selected)}
+                    onChange={(event) => patchQuestionSizing("fontSize", event.target.value)}
+                  />
+                </div>
+              </label>
+              <button className="apply-all" onClick={applySizingToAllQuestions}>
+                전체 문제에 적용
+              </button>
+            </div>
             <label className={fieldLabelClassName(documentFieldKey("examTitle"), "wide")}>
               시험지 제목
               <input
