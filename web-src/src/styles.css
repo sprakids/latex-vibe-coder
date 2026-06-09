@@ -8,6 +8,9 @@
   --muted: #627084;
   --accent: #1378ff;
   --danger: #d93036;
+  --paper-width: 210mm;
+  --paper-height: 297mm;
+  --paper-preview-scale: 0.82;
   font-family:
     "Pretendard",
     "Malgun Gothic",
@@ -406,10 +409,10 @@ p {
 }
 
 .paper-scroll .exam-page {
-  transform: scale(0.63);
+  transform: scale(var(--paper-preview-scale));
   transform-origin: top left;
-  margin-right: calc(842pt * -0.37);
-  margin-bottom: calc(1191pt * -0.37);
+  margin-right: -37.8mm;
+  margin-bottom: -53.46mm;
 }
 
 .screen-pages {
@@ -533,9 +536,11 @@ textarea {
 
 .exam-page {
   position: relative;
-  width: 842pt;
-  min-height: 1191pt;
-  padding: 86pt 94pt 118pt 88pt;
+  width: var(--paper-width);
+  height: var(--paper-height);
+  min-height: var(--paper-height);
+  overflow: hidden;
+  padding: 21mm 18mm 24mm;
   background: white;
   color: black;
   font-family: "HCR Batang", "HANBatang", "Hancom Batang", Batang, serif;
@@ -741,9 +746,9 @@ textarea {
 
 .exam-footer {
   position: absolute;
-  right: 95pt;
-  bottom: 74pt;
-  left: 88pt;
+  right: 18mm;
+  bottom: 14mm;
+  left: 18mm;
   font-size: 7.7pt;
 }
 
@@ -764,15 +769,25 @@ textarea {
 }
 
 @page {
-  size: 842pt 1191pt;
+  size: A4 portrait;
   margin: 0;
 }
 
 @media print {
+  html,
   body {
+    width: var(--paper-width);
     min-width: 0;
+    min-height: 0;
+    margin: 0;
     overflow: visible;
     background: white;
+  }
+
+  #root {
+    width: var(--paper-width);
+    margin: 0;
+    padding: 0;
   }
 
   .topbar,
@@ -799,8 +814,13 @@ textarea {
   .paper-scroll .exam-page,
   .exam-page {
     transform: none;
+    width: var(--paper-width);
+    height: var(--paper-height);
+    min-height: var(--paper-height);
     margin: 0;
     box-shadow: none;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   .screen-pages {
@@ -809,6 +829,9 @@ textarea {
 
   .print-pages {
     display: block;
+    width: var(--paper-width);
+    margin: 0;
+    padding: 0;
   }
 
   .print-pages .exam-page {
@@ -856,7 +879,7 @@ textarea {
 
   .paper-scroll .exam-page {
     transform: scale(0.42);
-    margin-right: calc(842pt * -0.58);
-    margin-bottom: calc(1191pt * -0.58);
+    margin-right: -121.8mm;
+    margin-bottom: -172.26mm;
   }
 }
