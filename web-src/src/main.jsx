@@ -630,10 +630,13 @@ function App() {
   const [saveStatus, setSaveStatus] = useState("");
   const [document, setDocument] = useState(() => normalizeDocument(loadLegacyDocument()));
   const [activePageId, setActivePageId] = useState(document.pages[0]?.id || "");
+  const [scrollRequest, setScrollRequest] = useState(null);
   const [selectedId, setSelectedId] = useState(document.questions[0]?.id || "");
   const [dragId, setDragId] = useState("");
   const [focusRequest, setFocusRequest] = useState(null);
   const importRef = useRef(null);
+  const paperScrollRef = useRef(null);
+  const pagePreviewRefs = useRef({});
   const fieldRefs = useRef({});
 
   const activeUser = store.users.find((user) => user.id === store.activeUserId) || null;
@@ -680,6 +683,15 @@ function App() {
       setActivePageId(document.pages[0]?.id || "");
     }
   }, [activePageId, document.pages]);
+
+  useEffect(() => {
+    if (!scrollRequest?.pageId) return;
+    const scroller = paperScrollRef.current;
+    const pageNode = pagePreviewRefs.current[scrollRequest.pageId];
+    if (!scroller || !pageNode) return;
+    const pageTop = pageNode.offsetTop - scroller.offsetTop;
+    scroller.scrollTo({ top: Math.max(pageTop - 12, 0), behavior: "smooth" });
+  }, [document.pages.length, scrollRequest]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -824,7 +836,11 @@ function App() {
   }
 
   function focusPreviewTarget(target) {
-    if (target.questionId) setSelectedId(target.questionId);
+    if (target.questionId) {
+      const nextQuestion = document.questions.find((question) => question.id === target.questionId);
+      if (nextQuestion?.pageId) setActivePageId(nextQuestion.pageId);
+      setSelectedId(target.questionId);
+    }
     setFocusRequest({ ...target, key: previewTargetKey(target), stamp: Date.now() });
   }
 
@@ -868,6 +884,7 @@ function App() {
     const firstQuestion = document.questions.find((question) => question.pageId === pageId);
     setSelectedId(firstQuestion?.id || "");
     setFocusRequest(null);
+    setScrollRequest({ pageId, stamp: Date.now() });
   }
 
   function addPage() {
@@ -876,12 +893,14 @@ function App() {
     setActivePageId(page.id);
     setSelectedId("");
     setFocusRequest(null);
+    setScrollRequest({ pageId: page.id, stamp: Date.now() });
   }
 
   function moveSelectedToPage(pageId) {
     if (!selected || selected.pageId === pageId) return;
     patchQuestion(selected.id, { pageId });
     setActivePageId(pageId);
+    setScrollRequest({ pageId, stamp: Date.now() });
   }
 
   function moveSelectedToAdjacentPage(offset) {
@@ -1129,18 +1148,27 @@ function App() {
             PDF로 저장
           </button>
         </div>
-        <div className="paper-scroll">
-          <div className="screen-page">
-            <ExamPreview
-              activeFieldKey={activePreviewKey}
-              document={document}
-              onPreviewEdit={focusPreviewTarget}
-              page={activePage}
-              pageNumber={activePageIndex + 1}
-              questions={pageQuestions}
-              selectedId={selected?.id}
-              totalPages={document.pages.length}
-            />
+        <div className="paper-scroll" ref={paperScrollRef}>
+          <div className="screen-pages">
+            {document.pages.map((page, index) => (
+              <div
+                key={page.id}
+                ref={(node) => {
+                  if (node) pagePreviewRefs.current[page.id] = node;
+                }}
+              >
+                <ExamPreview
+                  activeFieldKey={activePreviewKey}
+                  document={document}
+                  onPreviewEdit={focusPreviewTarget}
+                  page={page}
+                  pageNumber={index + 1}
+                  questions={document.questions.filter((question) => question.pageId === page.id)}
+                  selectedId={selected?.id}
+                  totalPages={document.pages.length}
+                />
+              </div>
+            ))}
           </div>
           <div className="print-pages">
             {document.pages.map((page, index) => (

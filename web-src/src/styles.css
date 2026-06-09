@@ -407,8 +407,10 @@ p {
   margin-bottom: calc(1191pt * -0.37);
 }
 
-.screen-page {
-  display: block;
+.screen-pages {
+  display: grid;
+  gap: 28px;
+  align-items: start;
 }
 
 .print-pages {
@@ -796,7 +798,7 @@ textarea {
     box-shadow: none;
   }
 
-  .screen-page {
+  .screen-pages {
     display: none !important;
   }
 
