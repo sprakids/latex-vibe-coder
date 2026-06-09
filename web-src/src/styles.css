@@ -23,6 +23,7 @@ body {
   margin: 0;
   min-width: 1160px;
   min-height: 100vh;
+  overflow: hidden;
   color: var(--text);
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.7), transparent 35%),
@@ -80,7 +81,8 @@ button:disabled {
   grid-template-columns: 270px minmax(580px, 1fr) 330px;
   grid-template-rows: 74px minmax(0, 1fr);
   gap: 14px;
-  min-height: 100vh;
+  min-height: 0;
+  height: 100vh;
   padding: 14px;
 }
 
@@ -133,6 +135,114 @@ button:disabled {
   padding: 14px;
 }
 
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+}
+
+.login-shell {
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  place-items: center;
+}
+
+.login-card {
+  display: grid;
+  width: min(430px, 100%);
+  gap: 16px;
+  padding: 24px;
+}
+
+.login-card p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-card form {
+  display: grid;
+  gap: 12px;
+}
+
+.recent-users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.library-panel,
+.page-panel {
+  display: grid;
+  gap: 9px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(119, 148, 184, 0.22);
+}
+
+.library-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.library-heading b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-heading span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.inline-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.inline-actions button,
+.page-panel .panel-title button {
+  padding: 8px 9px;
+  white-space: nowrap;
+}
+
+.page-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.page-tabs button {
+  overflow: hidden;
+  padding: 8px 7px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-tabs button.selected {
+  border-color: rgba(19, 120, 255, 0.55);
+  background: #eef8ff;
+  color: #0f4eaa;
+  font-weight: 700;
+}
+
+.question-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
 .panel-title,
 .preview-toolbar {
   display: flex;
@@ -179,9 +289,11 @@ p {
 
 .question-list {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 7px;
-  height: calc(100vh - 260px);
+  min-height: 140px;
+  height: auto;
   overflow: auto;
   padding-right: 3px;
 }
@@ -238,6 +350,36 @@ p {
   font-size: 12px;
 }
 
+.empty-list,
+.empty-page-note,
+.empty-inspector {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.empty-list {
+  display: grid;
+  min-height: 92px;
+  padding: 12px;
+  border: 1px dashed rgba(119, 148, 184, 0.32);
+  border-radius: 10px;
+  place-items: center;
+  text-align: center;
+}
+
+.empty-page-note {
+  margin-top: 18pt;
+  text-align: center;
+}
+
+.empty-inspector {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed rgba(119, 148, 184, 0.32);
+  border-radius: 10px;
+}
+
 .preview-shell {
   display: flex;
   flex-direction: column;
@@ -263,6 +405,14 @@ p {
   transform-origin: top left;
   margin-right: calc(842pt * -0.37);
   margin-bottom: calc(1191pt * -0.37);
+}
+
+.screen-page {
+  display: block;
+}
+
+.print-pages {
+  display: none;
 }
 
 .inspector {
@@ -340,6 +490,16 @@ input[type="range"] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.page-move-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.form-grid > .wide {
+  grid-column: 1 / -1;
 }
 
 input,
@@ -604,6 +764,7 @@ textarea {
 @media print {
   body {
     min-width: 0;
+    overflow: visible;
     background: white;
   }
 
@@ -635,6 +796,24 @@ textarea {
     box-shadow: none;
   }
 
+  .screen-page {
+    display: none !important;
+  }
+
+  .print-pages {
+    display: block;
+  }
+
+  .print-pages .exam-page {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .print-pages .exam-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
   .preview-question-clickable,
   .preview-question-clickable:hover,
   .preview-question-selected,
@@ -653,12 +832,14 @@ textarea {
 @media (max-width: 900px) {
   body {
     min-width: 0;
+    overflow: auto;
   }
 
   .app-shell {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    height: auto;
   }
 
   .question-list {

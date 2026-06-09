@@ -3,10 +3,14 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 const choiceMarks = ["①", "②", "③", "④", "⑤"];
+const STORE_KEY = "problem-editor-store-v1";
+const LEGACY_DOC_KEY = "latex-vibe-coder-doc";
 const DEFAULT_QUESTION_SIZE = 100;
 const DEFAULT_FONT_SIZE = 100;
+const DEFAULT_QUESTION_SPACING = 10;
 const QUESTION_SIZE_RANGE = { min: 70, max: 140 };
 const FONT_SIZE_RANGE = { min: 70, max: 150 };
+const QUESTION_SPACING_RANGE = { min: 0, max: 44 };
 
 const questionTypes = [
   ["passage", "지문형"],
@@ -18,6 +22,14 @@ const questionTypes = [
 ];
 
 const typeLabel = Object.fromEntries(questionTypes);
+
+function createId(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
 
 function documentFieldKey(field) {
   return `document:${field}`;
@@ -65,18 +77,22 @@ function previewEditableClassName(baseClass, activeFieldKey, target) {
     .join(" ");
 }
 
-function clampPercent(value, range, fallback = 100) {
+function clampNumber(value, range, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(range.max, Math.max(range.min, Math.round(number)));
 }
 
 function questionSize(question) {
-  return clampPercent(question.size, QUESTION_SIZE_RANGE, DEFAULT_QUESTION_SIZE);
+  return clampNumber(question?.size, QUESTION_SIZE_RANGE, DEFAULT_QUESTION_SIZE);
 }
 
 function questionFontSize(question) {
-  return clampPercent(question.fontSize, FONT_SIZE_RANGE, DEFAULT_FONT_SIZE);
+  return clampNumber(question?.fontSize, FONT_SIZE_RANGE, DEFAULT_FONT_SIZE);
+}
+
+function questionSpacing(question) {
+  return clampNumber(question?.spacing, QUESTION_SPACING_RANGE, DEFAULT_QUESTION_SPACING);
 }
 
 function pt(value) {
@@ -88,7 +104,7 @@ function questionStyle(question) {
   const fontScale = questionFontSize(question) / 100;
   const effectiveFontScale = sizeScale * fontScale;
   return {
-    "--question-margin-bottom": pt(8 * sizeScale),
+    "--question-margin-bottom": pt(questionSpacing(question) * sizeScale),
     "--question-font-size": pt(9.35 * effectiveFontScale),
     "--question-heading-gap": pt(4 * sizeScale),
     "--question-heading-margin-bottom": pt(3 * sizeScale),
@@ -112,7 +128,14 @@ function questionStyle(question) {
   };
 }
 
-function createQuestion(number, kind = "passage") {
+function createPage(number = 1) {
+  return {
+    id: createId("page"),
+    title: `${number}쪽`,
+  };
+}
+
+function createQuestion(number, kind = "passage", pageId = "") {
   const prompts = {
     passage: "다음 글의 주제로 가장 적절한 것은?",
     listening: "대화를 듣고, 여자의 의견으로 가장 적절한 것을 고르시오.",
@@ -122,7 +145,8 @@ function createQuestion(number, kind = "passage") {
     custom: "문항 발문을 입력하세요.",
   };
   return {
-    id: crypto.randomUUID(),
+    id: createId("question"),
+    pageId,
     number,
     kind,
     score: "",
@@ -131,21 +155,24 @@ function createQuestion(number, kind = "passage") {
     choices: ["", "", "", "", ""],
     size: DEFAULT_QUESTION_SIZE,
     fontSize: DEFAULT_FONT_SIZE,
+    spacing: DEFAULT_QUESTION_SPACING,
     answer: "",
     note: "",
   };
 }
 
 function sampleDocument() {
+  const firstPage = createPage(1);
   return {
     title: "영어영역 문제지",
     examTitle: "2026학년도 대학수학능력시험 문제지",
     subtitle: "과외용 수능 영어 연습",
     form: "홀수형",
     copyright: "이 문제지는 과외 수업용으로 제작되었습니다.",
+    pages: [firstPage],
     questions: [
       {
-        ...createQuestion(18, "passage"),
+        ...createQuestion(18, "passage", firstPage.id),
         prompt: "다음 글의 목적으로 가장 적절한 것은?",
         passage:
           "Dear members of the school reading club,\n\nWe are pleased to announce that our monthly book talk will be held in the library this Friday. Students who wish to present a short review should submit the title of their book by Wednesday. We hope many members will join us and share their thoughts.",
@@ -158,7 +185,7 @@ function sampleDocument() {
         ],
       },
       {
-        ...createQuestion(19, "passage"),
+        ...createQuestion(19, "passage", firstPage.id),
         prompt: "다음 글에 드러난 Mina의 심경 변화로 가장 적절한 것은?",
         passage:
           "Mina stood in front of the classroom door, holding her speech cards so tightly that the edges bent. She could hear her classmates talking inside, and her heart beat faster. When her name was called, she took a slow breath and began. After a few sentences, she noticed her friend smiling and nodding. Her voice became steady, and by the end of the speech she felt proud of herself.",
@@ -171,7 +198,7 @@ function sampleDocument() {
         ],
       },
       {
-        ...createQuestion(20, "notice"),
+        ...createQuestion(20, "notice", firstPage.id),
         prompt: "다음 안내문의 내용과 일치하지 않는 것은?",
         passage:
           "School Volunteer Day\nDate: July 12\nPlace: Green River Park\nParticipants: First- and second-year students\nActivities: Picking up trash, planting flowers\nBring: Water bottle, gloves, and a hat\nSign up by July 5 through the school website.",
@@ -184,7 +211,7 @@ function sampleDocument() {
         ],
       },
       {
-        ...createQuestion(21, "table"),
+        ...createQuestion(21, "table", firstPage.id),
         prompt: "다음 표의 내용과 일치하지 않는 것은?",
         score: "3",
         passage:
@@ -216,13 +243,163 @@ function mostlyLatin(text) {
   return latin / letters.length > 0.72;
 }
 
+function normalizeChoiceArray(value) {
+  const choices = Array.isArray(value) ? value.map((choice) => String(choice || "")) : [];
+  return Array.from({ length: Math.max(5, choices.length) }, (_, index) => choices[index] || "");
+}
+
 function normalizeChoiceLines(value) {
   const lines = value.split(/\r?\n/).map((line) => line.trim());
   return Array.from({ length: Math.max(5, lines.length) }, (_, index) => lines[index] || "");
 }
 
-function resequenceQuestions(questions, startNumber) {
-  return questions.map((question, index) => ({ ...question, number: startNumber + index }));
+function normalizeDocument(input) {
+  const fallback = sampleDocument();
+  const raw = input && typeof input === "object" ? input : fallback;
+  const rawPages = Array.isArray(raw.pages) && raw.pages.length ? raw.pages : [{ title: "1쪽" }];
+  const pages = rawPages.map((page, index) => ({
+    id: page?.id || createId("page"),
+    title: page?.title || `${index + 1}쪽`,
+  }));
+  const validPageIds = new Set(pages.map((page) => page.id));
+  const firstPageId = pages[0].id;
+  const rawQuestions = Array.isArray(raw.questions) && raw.questions.length ? raw.questions : fallback.questions;
+  const questions = rawQuestions.map((question, index) => {
+    const kind = question?.kind || "passage";
+    const base = createQuestion(Number(question?.number) || 18 + index, kind, firstPageId);
+    return {
+      ...base,
+      ...question,
+      id: question?.id || base.id,
+      pageId: validPageIds.has(question?.pageId) ? question.pageId : firstPageId,
+      kind,
+      choices: normalizeChoiceArray(question?.choices),
+      size: questionSize(question),
+      fontSize: questionFontSize(question),
+      spacing: questionSpacing(question),
+    };
+  });
+
+  return {
+    title: raw.title || fallback.title,
+    examTitle: raw.examTitle || fallback.examTitle,
+    subtitle: raw.subtitle || fallback.subtitle,
+    form: raw.form || fallback.form,
+    copyright: raw.copyright || fallback.copyright,
+    pages,
+    questions,
+  };
+}
+
+function orderedQuestions(document) {
+  const knownPageIds = new Set(document.pages.map((page) => page.id));
+  const ordered = document.pages.flatMap((page) => document.questions.filter((question) => question.pageId === page.id));
+  const orphaned = document.questions.filter((question) => !knownPageIds.has(question.pageId));
+  return [...ordered, ...orphaned];
+}
+
+function resequenceDocument(document, startNumber = 18) {
+  const ordered = orderedQuestions(document).map((question, index) => ({ ...question, number: startNumber + index }));
+  return { ...document, questions: ordered };
+}
+
+function emptyStore() {
+  return {
+    activeUserId: "",
+    activeStudentIdByUser: {},
+    activeFileIdByUser: {},
+    users: [],
+    students: [],
+    files: [],
+  };
+}
+
+function normalizeStore(input) {
+  const store = input && typeof input === "object" ? input : emptyStore();
+  return {
+    ...emptyStore(),
+    ...store,
+    activeStudentIdByUser: store.activeStudentIdByUser || {},
+    activeFileIdByUser: store.activeFileIdByUser || {},
+    users: Array.isArray(store.users) ? store.users : [],
+    students: Array.isArray(store.students) ? store.students : [],
+    files: Array.isArray(store.files)
+      ? store.files.map((file) => ({ ...file, document: normalizeDocument(file.document) }))
+      : [],
+  };
+}
+
+function loadStore() {
+  try {
+    return normalizeStore(JSON.parse(localStorage.getItem(STORE_KEY) || "null"));
+  } catch {
+    return emptyStore();
+  }
+}
+
+function loadLegacyDocument() {
+  try {
+    const value = localStorage.getItem(LEGACY_DOC_KEY);
+    return value ? normalizeDocument(JSON.parse(value)) : sampleDocument();
+  } catch {
+    return sampleDocument();
+  }
+}
+
+function saveStore(store) {
+  localStorage.setItem(STORE_KEY, JSON.stringify(store));
+}
+
+function createStudent(userId, name) {
+  return {
+    id: createId("student"),
+    userId,
+    name: name || "미분류",
+    createdAt: nowIso(),
+  };
+}
+
+function createFile(userId, studentId, name, document = sampleDocument()) {
+  return {
+    id: createId("file"),
+    userId,
+    studentId,
+    name: name || "새 문제지",
+    document: normalizeDocument(document),
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+}
+
+function ensureUserWorkspace(store, userId) {
+  const next = normalizeStore(store);
+  let students = next.students.filter((student) => student.userId === userId);
+  if (!students.length) {
+    const student = createStudent(userId, "미분류");
+    next.students = [...next.students, student];
+    students = [student];
+  }
+
+  let activeStudentId = next.activeStudentIdByUser[userId];
+  if (!students.some((student) => student.id === activeStudentId)) {
+    activeStudentId = students[0].id;
+    next.activeStudentIdByUser = { ...next.activeStudentIdByUser, [userId]: activeStudentId };
+  }
+
+  let files = next.files.filter((file) => file.userId === userId && file.studentId === activeStudentId);
+  if (!files.length) {
+    const file = createFile(userId, activeStudentId, "새 문제지", loadLegacyDocument());
+    next.files = [...next.files, file];
+    files = [file];
+  }
+
+  let activeFileId = next.activeFileIdByUser[userId];
+  if (!files.some((file) => file.id === activeFileId)) {
+    activeFileId = files[0].id;
+    next.activeFileIdByUser = { ...next.activeFileIdByUser, [userId]: activeFileId };
+  }
+
+  return next;
 }
 
 function QuestionBody({ activeFieldKey, onPreviewEdit, question }) {
@@ -288,6 +465,7 @@ function ExamQuestion({ activeFieldKey, onPreviewEdit, question, selectedId }) {
   const promptTarget = { questionId: question.id, field: "prompt" };
   const scoreTarget = { questionId: question.id, field: "score" };
   const isSizingActive = activeFieldKey === previewElementKey(sizeTarget);
+
   return (
     <section
       className={[
@@ -346,12 +524,13 @@ function ExamQuestion({ activeFieldKey, onPreviewEdit, question, selectedId }) {
   );
 }
 
-function ExamPreview({ activeFieldKey, document, onPreviewEdit, selectedId }) {
+function ExamPreview({ activeFieldKey, document, onPreviewEdit, page, pageNumber, questions, selectedId, totalPages }) {
   const subject = (document.title || "").replace(" 문제지", "") || "영어영역";
   const examTitleTarget = { field: "examTitle" };
   const titleTarget = { field: "title" };
   const formTarget = { field: "form" };
   const copyrightTarget = { field: "copyright" };
+
   return (
     <article className="exam-page">
       <header className="exam-header">
@@ -380,15 +559,19 @@ function ExamPreview({ activeFieldKey, document, onPreviewEdit, selectedId }) {
         <div className="exam-rule" />
       </header>
       <main className="exam-columns">
-        {document.questions.map((question) => (
-          <ExamQuestion
-            key={question.id}
-            activeFieldKey={activeFieldKey}
-            onPreviewEdit={onPreviewEdit}
-            question={question}
-            selectedId={selectedId}
-          />
-        ))}
+        {questions.length ? (
+          questions.map((question) => (
+            <ExamQuestion
+              key={question.id}
+              activeFieldKey={activeFieldKey}
+              onPreviewEdit={onPreviewEdit}
+              question={question}
+              selectedId={selectedId}
+            />
+          ))
+        ) : (
+          <div className="empty-page-note">{page?.title || `${pageNumber}쪽`}에 문항이 없습니다.</div>
+        )}
       </main>
       <footer className="exam-footer">
         <span
@@ -397,34 +580,106 @@ function ExamPreview({ activeFieldKey, document, onPreviewEdit, selectedId }) {
         >
           {document.copyright || ""}
         </span>
-        <b>1 1</b>
+        <b>
+          {pageNumber} / {totalPages}
+        </b>
       </footer>
     </article>
   );
 }
 
+function LoginScreen({ loginName, onChangeLoginName, onLogin, users }) {
+  return (
+    <div className="login-shell">
+      <section className="login-card glass">
+        <h1>문제 편집기</h1>
+        <p>이 브라우저 안에 저장되는 로컬 계정으로 로그인합니다.</p>
+        <form onSubmit={onLogin}>
+          <label>
+            계정 이름
+            <input
+              autoFocus
+              value={loginName}
+              placeholder="예: 김쌤"
+              onChange={(event) => onChangeLoginName(event.target.value)}
+            />
+          </label>
+          <button className="primary" type="submit">
+            로그인
+          </button>
+        </form>
+        {users.length ? (
+          <div className="recent-users">
+            {users.map((user) => (
+              <button key={user.id} onClick={() => onChangeLoginName(user.name)}>
+                {user.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
 function App() {
-  const saved = localStorage.getItem("latex-vibe-coder-doc");
-  const [document, setDocument] = useState(() => {
-    if (!saved) return sampleDocument();
-    try {
-      return JSON.parse(saved);
-    } catch {
-      return sampleDocument();
-    }
-  });
+  const [store, setStore] = useState(loadStore);
+  const [loginName, setLoginName] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
+  const [document, setDocument] = useState(() => normalizeDocument(loadLegacyDocument()));
+  const [activePageId, setActivePageId] = useState(document.pages[0]?.id || "");
   const [selectedId, setSelectedId] = useState(document.questions[0]?.id || "");
   const [dragId, setDragId] = useState("");
   const [focusRequest, setFocusRequest] = useState(null);
   const importRef = useRef(null);
   const fieldRefs = useRef({});
 
+  const activeUser = store.users.find((user) => user.id === store.activeUserId) || null;
+  const userStudents = useMemo(
+    () => (activeUser ? store.students.filter((student) => student.userId === activeUser.id) : []),
+    [activeUser, store.students],
+  );
+  const activeStudentId = activeUser ? store.activeStudentIdByUser[activeUser.id] || userStudents[0]?.id || "" : "";
+  const activeStudent = userStudents.find((student) => student.id === activeStudentId) || userStudents[0] || null;
+  const studentFiles = useMemo(
+    () =>
+      activeUser && activeStudent
+        ? store.files.filter((file) => file.userId === activeUser.id && file.studentId === activeStudent.id)
+        : [],
+    [activeStudent, activeUser, store.files],
+  );
+  const activeFileId = activeUser ? store.activeFileIdByUser[activeUser.id] || studentFiles[0]?.id || "" : "";
+  const activeFile = studentFiles.find((file) => file.id === activeFileId) || studentFiles[0] || null;
+  const activePage = document.pages.find((page) => page.id === activePageId) || document.pages[0];
+  const activePageIndex = Math.max(0, document.pages.findIndex((page) => page.id === activePage?.id));
+  const pageQuestions = useMemo(
+    () => document.questions.filter((question) => question.pageId === activePage?.id),
+    [activePage, document.questions],
+  );
   const selected = useMemo(
-    () => document.questions.find((question) => question.id === selectedId) || document.questions[0],
-    [document.questions, selectedId],
+    () => document.questions.find((question) => question.id === selectedId) || pageQuestions[0] || document.questions[0],
+    [document.questions, pageQuestions, selectedId],
   );
   const activeFieldKey = focusRequest?.key || "";
   const activePreviewKey = focusRequest ? previewElementKey(focusRequest) : "";
+
+  useEffect(() => {
+    if (!activeFile) return;
+    const nextDocument = normalizeDocument(activeFile.document);
+    setDocument(nextDocument);
+    const nextPageId = nextDocument.pages[0]?.id || "";
+    setActivePageId(nextPageId);
+    setSelectedId(nextDocument.questions.find((question) => question.pageId === nextPageId)?.id || nextDocument.questions[0]?.id || "");
+    setFocusRequest(null);
+  }, [activeFile?.id]);
+
+  useEffect(() => {
+    if (!document.pages.some((page) => page.id === activePageId)) {
+      setActivePageId(document.pages[0]?.id || "");
+    }
+  }, [activePageId, document.pages]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -451,6 +706,113 @@ function App() {
     });
   }, [focusRequest]);
 
+  function commitStore(nextStore) {
+    const normalized = normalizeStore(nextStore);
+    setStore(normalized);
+    saveStore(normalized);
+  }
+
+  function updateActiveFileDocument(nextDocument, nextStore = store) {
+    if (!activeFile) return nextStore;
+    const normalized = normalizeDocument(nextDocument);
+    return {
+      ...nextStore,
+      files: nextStore.files.map((file) =>
+        file.id === activeFile.id ? { ...file, document: normalized, updatedAt: nowIso() } : file,
+      ),
+    };
+  }
+
+  function updateDocument(next) {
+    const value = normalizeDocument(typeof next === "function" ? next(document) : next);
+    setDocument(value);
+    localStorage.setItem(LEGACY_DOC_KEY, JSON.stringify(value));
+    if (activeFile) {
+      commitStore(updateActiveFileDocument(value));
+      setSaveStatus("자동 저장됨");
+    }
+  }
+
+  function login(event) {
+    event.preventDefault();
+    const name = loginName.trim();
+    if (!name) return;
+    let nextStore = normalizeStore(store);
+    let user = nextStore.users.find((item) => item.name === name);
+    if (!user) {
+      user = { id: createId("user"), name, createdAt: nowIso() };
+      nextStore = { ...nextStore, users: [...nextStore.users, user] };
+    }
+    nextStore = ensureUserWorkspace({ ...nextStore, activeUserId: user.id }, user.id);
+    commitStore(nextStore);
+    setLoginName("");
+  }
+
+  function logout() {
+    commitStore({ ...store, activeUserId: "" });
+    setSaveStatus("");
+  }
+
+  function saveCurrentFile() {
+    if (!activeFile) return;
+    commitStore(updateActiveFileDocument(document));
+    setSaveStatus("저장됨");
+  }
+
+  function addStudent() {
+    if (!activeUser) return;
+    const name = studentName.trim() || `학생 ${userStudents.length + 1}`;
+    const student = createStudent(activeUser.id, name);
+    const file = createFile(activeUser.id, student.id, "새 문제지", sampleDocument());
+    commitStore({
+      ...store,
+      students: [...store.students, student],
+      files: [...store.files, file],
+      activeStudentIdByUser: { ...store.activeStudentIdByUser, [activeUser.id]: student.id },
+      activeFileIdByUser: { ...store.activeFileIdByUser, [activeUser.id]: file.id },
+    });
+    setStudentName("");
+  }
+
+  function addFile() {
+    if (!activeUser || !activeStudent) return;
+    const name = fileName.trim() || `문제지 ${studentFiles.length + 1}`;
+    const file = createFile(activeUser.id, activeStudent.id, name, sampleDocument());
+    commitStore({
+      ...store,
+      files: [...store.files, file],
+      activeFileIdByUser: { ...store.activeFileIdByUser, [activeUser.id]: file.id },
+    });
+    setFileName("");
+  }
+
+  function changeStudent(studentId) {
+    if (!activeUser) return;
+    const files = store.files.filter((file) => file.userId === activeUser.id && file.studentId === studentId);
+    let nextStore = {
+      ...store,
+      activeStudentIdByUser: { ...store.activeStudentIdByUser, [activeUser.id]: studentId },
+      activeFileIdByUser: { ...store.activeFileIdByUser, [activeUser.id]: files[0]?.id || "" },
+    };
+    if (!files.length) {
+      const file = createFile(activeUser.id, studentId, "새 문제지", sampleDocument());
+      nextStore = {
+        ...nextStore,
+        files: [...nextStore.files, file],
+        activeFileIdByUser: { ...nextStore.activeFileIdByUser, [activeUser.id]: file.id },
+      };
+    }
+    commitStore(nextStore);
+  }
+
+  function changeFile(fileId) {
+    if (!activeUser) return;
+    commitStore({
+      ...store,
+      activeFileIdByUser: { ...store.activeFileIdByUser, [activeUser.id]: fileId },
+    });
+  }
+
   function bindField(key) {
     return (node) => {
       if (node) fieldRefs.current[key] = node;
@@ -466,12 +828,6 @@ function App() {
     setFocusRequest({ ...target, key: previewTargetKey(target), stamp: Date.now() });
   }
 
-  function updateDocument(next) {
-    const value = typeof next === "function" ? next(document) : next;
-    setDocument(value);
-    localStorage.setItem("latex-vibe-coder-doc", JSON.stringify(value));
-  }
-
   function patchQuestion(id, patch) {
     updateDocument((doc) => ({
       ...doc,
@@ -479,11 +835,13 @@ function App() {
     }));
   }
 
-  function patchQuestionSizing(field, value) {
+  function patchQuestionLayout(field, value) {
     if (!selected) return;
-    const range = field === "fontSize" ? FONT_SIZE_RANGE : QUESTION_SIZE_RANGE;
-    const fallback = field === "fontSize" ? DEFAULT_FONT_SIZE : DEFAULT_QUESTION_SIZE;
-    patchQuestion(selected.id, { [field]: clampPercent(value, range, fallback) });
+    const range =
+      field === "fontSize" ? FONT_SIZE_RANGE : field === "spacing" ? QUESTION_SPACING_RANGE : QUESTION_SIZE_RANGE;
+    const fallback =
+      field === "fontSize" ? DEFAULT_FONT_SIZE : field === "spacing" ? DEFAULT_QUESTION_SPACING : DEFAULT_QUESTION_SIZE;
+    patchQuestion(selected.id, { [field]: clampNumber(value, range, fallback) });
   }
 
   function applySizingToAllQuestions() {
@@ -496,9 +854,47 @@ function App() {
     }));
   }
 
+  function applySpacingToAllQuestions() {
+    if (!selected) return;
+    const spacing = questionSpacing(selected);
+    updateDocument((doc) => ({
+      ...doc,
+      questions: doc.questions.map((question) => ({ ...question, spacing })),
+    }));
+  }
+
+  function selectPage(pageId) {
+    setActivePageId(pageId);
+    const firstQuestion = document.questions.find((question) => question.pageId === pageId);
+    setSelectedId(firstQuestion?.id || "");
+    setFocusRequest(null);
+  }
+
+  function addPage() {
+    const page = createPage(document.pages.length + 1);
+    updateDocument((doc) => ({ ...doc, pages: [...doc.pages, page] }));
+    setActivePageId(page.id);
+    setSelectedId("");
+    setFocusRequest(null);
+  }
+
+  function moveSelectedToPage(pageId) {
+    if (!selected || selected.pageId === pageId) return;
+    patchQuestion(selected.id, { pageId });
+    setActivePageId(pageId);
+  }
+
+  function moveSelectedToAdjacentPage(offset) {
+    if (!selected) return;
+    const nextPage = document.pages[activePageIndex + offset];
+    if (nextPage) moveSelectedToPage(nextPage.id);
+  }
+
   function addQuestion(kind = "passage") {
+    const pageId = activePage?.id || document.pages[0]?.id;
+    if (!pageId) return;
     const nextNumber = Math.max(17, ...document.questions.map((q) => Number(q.number) || 0)) + 1;
-    const question = createQuestion(nextNumber, kind);
+    const question = createQuestion(nextNumber, kind, pageId);
     updateDocument((doc) => ({ ...doc, questions: [...doc.questions, question] }));
     setSelectedId(question.id);
     setFocusRequest({ questionId: question.id, field: "size", key: questionFieldKey(question.id, "size"), stamp: Date.now() });
@@ -506,14 +902,14 @@ function App() {
 
   function duplicateQuestion() {
     if (!selected) return;
-    const clone = { ...selected, id: crypto.randomUUID(), number: Number(selected.number || 0) + 1 };
-    const startNumber = Number(document.questions[0]?.number) || 1;
+    const clone = { ...selected, id: createId("question"), number: Number(selected.number || 0) + 1 };
+    const startNumber = Number(document.questions[0]?.number) || 18;
     updateDocument((doc) => {
       const list = [...doc.questions];
       const sourceIndex = list.findIndex((question) => question.id === selected.id);
       const targetIndex = sourceIndex < 0 ? list.length : sourceIndex + 1;
       list.splice(targetIndex, 0, clone);
-      return { ...doc, questions: resequenceQuestions(list, startNumber) };
+      return resequenceDocument({ ...doc, questions: list }, startNumber);
     });
     setSelectedId(clone.id);
     setFocusRequest({ questionId: clone.id, field: "size", key: questionFieldKey(clone.id, "size"), stamp: Date.now() });
@@ -521,26 +917,25 @@ function App() {
 
   function deleteQuestion() {
     if (!selected || document.questions.length <= 1) return;
-    const selectedIndex = document.questions.findIndex((question) => question.id === selected.id);
-    const startNumber = Number(document.questions[0]?.number) || 1;
-    const nextQuestions = resequenceQuestions(
-      document.questions.filter((question) => question.id !== selected.id),
-      startNumber,
-    );
-    const nextSelected = nextQuestions[Math.min(Math.max(selectedIndex, 0), nextQuestions.length - 1)];
-    updateDocument((doc) => ({
-      ...doc,
-      questions: resequenceQuestions(
-        doc.questions.filter((question) => question.id !== selected.id),
+    const startNumber = Number(document.questions[0]?.number) || 18;
+    const samePage = document.questions.filter((question) => question.pageId === selected.pageId);
+    const selectedPageIndex = samePage.findIndex((question) => question.id === selected.id);
+    const nextSamePage = samePage[selectedPageIndex + 1] || samePage[selectedPageIndex - 1];
+    updateDocument((doc) =>
+      resequenceDocument(
+        {
+          ...doc,
+          questions: doc.questions.filter((question) => question.id !== selected.id),
+        },
         startNumber,
       ),
-    }));
-    setSelectedId(nextSelected?.id || "");
-    if (nextSelected) {
+    );
+    setSelectedId(nextSamePage?.id || "");
+    if (nextSamePage) {
       setFocusRequest({
-        questionId: nextSelected.id,
+        questionId: nextSamePage.id,
         field: "size",
-        key: questionFieldKey(nextSelected.id, "size"),
+        key: questionFieldKey(nextSamePage.id, "size"),
         stamp: Date.now(),
       });
     }
@@ -560,11 +955,8 @@ function App() {
   }
 
   function renumber() {
-    const startNumber = Number(document.questions[0]?.number) || 1;
-    updateDocument((doc) => ({
-      ...doc,
-      questions: resequenceQuestions(doc.questions, startNumber),
-    }));
+    const startNumber = Number(document.questions[0]?.number) || 18;
+    updateDocument((doc) => resequenceDocument(doc, startNumber));
   }
 
   function exportJson() {
@@ -572,7 +964,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const a = Object.assign(window.document.createElement("a"), {
       href: url,
-      download: "latex-vibe-coder-project.json",
+      download: "problem-editor-project.json",
     });
     a.click();
     URL.revokeObjectURL(url);
@@ -584,9 +976,9 @@ function App() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const next = JSON.parse(String(reader.result));
-        if (!Array.isArray(next.questions)) throw new Error("questions 배열이 없습니다.");
+        const next = normalizeDocument(JSON.parse(String(reader.result)));
         updateDocument(next);
+        setActivePageId(next.pages[0]?.id || "");
         setSelectedId(next.questions[0]?.id || "");
       } catch (error) {
         alert(`프로젝트를 열 수 없습니다: ${error.message}`);
@@ -596,16 +988,29 @@ function App() {
     event.target.value = "";
   }
 
+  if (!activeUser) {
+    return (
+      <LoginScreen
+        loginName={loginName}
+        onChangeLoginName={setLoginName}
+        onLogin={login}
+        users={store.users}
+      />
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <div>
           <strong>문제 편집기</strong>
-          <span>GitHub Pages용 웹 편집기</span>
+          <span>{activeFile ? `${activeStudent?.name || "미분류"} / ${activeFile.name}` : "로컬 저장소"}</span>
         </div>
         <nav>
           <button onClick={() => importRef.current?.click()}>JSON 열기</button>
           <button onClick={exportJson}>JSON 저장</button>
+          <button onClick={saveCurrentFile}>저장</button>
+          <button onClick={logout}>로그아웃</button>
           <button className="primary" onClick={() => window.print()}>
             PDF 저장
           </button>
@@ -614,60 +1019,144 @@ function App() {
       </header>
 
       <aside className="sidebar glass">
-        <div className="panel-title">
-          <h2>문항</h2>
-          <button onClick={() => addQuestion("passage")}>추가</button>
-        </div>
-        <div className="type-row">
-          {questionTypes.slice(0, 4).map(([kind, label]) => (
-            <button key={kind} onClick={() => addQuestion(kind)}>
-              {label}
+        <section className="library-panel">
+          <div className="library-heading">
+            <b>{activeUser.name}</b>
+            <span>{saveStatus || "자동 저장"}</span>
+          </div>
+          <label>
+            학생 폴더
+            <select value={activeStudentId} onChange={(event) => changeStudent(event.target.value)}>
+              {userStudents.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="inline-actions">
+            <input value={studentName} placeholder="학생 이름" onChange={(event) => setStudentName(event.target.value)} />
+            <button onClick={addStudent}>추가</button>
+          </div>
+          <label>
+            문제지 파일
+            <select value={activeFileId} onChange={(event) => changeFile(event.target.value)}>
+              {studentFiles.map((file) => (
+                <option key={file.id} value={file.id}>
+                  {file.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="inline-actions">
+            <input value={fileName} placeholder="파일 이름" onChange={(event) => setFileName(event.target.value)} />
+            <button onClick={addFile}>새 파일</button>
+          </div>
+        </section>
+
+        <section className="page-panel">
+          <div className="panel-title">
+            <h2>페이지</h2>
+            <button onClick={addPage}>추가</button>
+          </div>
+          <div className="page-tabs">
+            {document.pages.map((page, index) => (
+              <button
+                key={page.id}
+                className={page.id === activePage?.id ? "selected" : ""}
+                onClick={() => selectPage(page.id)}
+              >
+                {page.title || `${index + 1}쪽`}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="question-panel">
+          <div className="panel-title">
+            <h2>문항</h2>
+            <button onClick={() => addQuestion("passage")}>추가</button>
+          </div>
+          <div className="type-row">
+            {questionTypes.slice(0, 4).map(([kind, label]) => (
+              <button key={kind} onClick={() => addQuestion(kind)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="question-list">
+            {pageQuestions.length ? (
+              pageQuestions.map((question) => (
+                <button
+                  key={question.id}
+                  draggable
+                  className={question.id === selected?.id ? "selected" : ""}
+                  onClick={() => setSelectedId(question.id)}
+                  onDragStart={() => setDragId(question.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => reorder(dragId, question.id)}
+                >
+                  <span>{question.number}</span>
+                  <b>{typeLabel[question.kind]}</b>
+                  <small>{question.prompt}</small>
+                </button>
+              ))
+            ) : (
+              <div className="empty-list">이 페이지에는 문항이 없습니다.</div>
+            )}
+          </div>
+          <div className="sidebar-actions">
+            <button onClick={duplicateQuestion} disabled={!selected}>
+              문제 복사
             </button>
-          ))}
-        </div>
-        <div className="question-list">
-          {document.questions.map((question) => (
-            <button
-              key={question.id}
-              draggable
-              className={question.id === selected?.id ? "selected" : ""}
-              onClick={() => setSelectedId(question.id)}
-              onDragStart={() => setDragId(question.id)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => reorder(dragId, question.id)}
-            >
-              <span>{question.number}</span>
-              <b>{typeLabel[question.kind]}</b>
-              <small>{question.prompt}</small>
+            <button onClick={renumber}>번호 정리</button>
+            <button className="danger" disabled={!selected || document.questions.length <= 1} onClick={deleteQuestion}>
+              문제 삭제
             </button>
-          ))}
-        </div>
-        <div className="sidebar-actions">
-          <button onClick={duplicateQuestion}>문제 복사</button>
-          <button onClick={renumber}>번호 정리</button>
-          <button className="danger" disabled={document.questions.length <= 1} onClick={deleteQuestion}>
-            문제 삭제
-          </button>
-        </div>
+          </div>
+        </section>
       </aside>
 
       <section className="preview-shell glass">
         <div className="preview-toolbar">
           <div>
             <h1>{document.title}</h1>
-            <p>시험지 미리보기는 출력 양식에 맞춰 표시됩니다.</p>
+            <p>
+              {activePage?.title || `${activePageIndex + 1}쪽`} · {pageQuestions.length}문항
+            </p>
           </div>
           <button className="primary" onClick={() => window.print()}>
             PDF로 저장
           </button>
         </div>
         <div className="paper-scroll">
-          <ExamPreview
-            activeFieldKey={activePreviewKey}
-            document={document}
-            onPreviewEdit={focusPreviewTarget}
-            selectedId={selected?.id}
-          />
+          <div className="screen-page">
+            <ExamPreview
+              activeFieldKey={activePreviewKey}
+              document={document}
+              onPreviewEdit={focusPreviewTarget}
+              page={activePage}
+              pageNumber={activePageIndex + 1}
+              questions={pageQuestions}
+              selectedId={selected?.id}
+              totalPages={document.pages.length}
+            />
+          </div>
+          <div className="print-pages">
+            {document.pages.map((page, index) => (
+              <ExamPreview
+                key={page.id}
+                activeFieldKey=""
+                document={document}
+                onPreviewEdit={null}
+                page={page}
+                pageNumber={index + 1}
+                questions={document.questions.filter((question) => question.pageId === page.id)}
+                selectedId=""
+                totalPages={document.pages.length}
+              />
+            ))}
+          </div>
         </div>
       </section>
 
@@ -685,7 +1174,7 @@ function App() {
                     min={QUESTION_SIZE_RANGE.min}
                     max={QUESTION_SIZE_RANGE.max}
                     value={questionSize(selected)}
-                    onChange={(event) => patchQuestionSizing("size", event.target.value)}
+                    onChange={(event) => patchQuestionLayout("size", event.target.value)}
                   />
                   <input
                     aria-label="문제 크기 값"
@@ -694,7 +1183,7 @@ function App() {
                     min={QUESTION_SIZE_RANGE.min}
                     max={QUESTION_SIZE_RANGE.max}
                     value={questionSize(selected)}
-                    onChange={(event) => patchQuestionSizing("size", event.target.value)}
+                    onChange={(event) => patchQuestionLayout("size", event.target.value)}
                   />
                 </div>
               </label>
@@ -707,7 +1196,7 @@ function App() {
                     min={FONT_SIZE_RANGE.min}
                     max={FONT_SIZE_RANGE.max}
                     value={questionFontSize(selected)}
-                    onChange={(event) => patchQuestionSizing("fontSize", event.target.value)}
+                    onChange={(event) => patchQuestionLayout("fontSize", event.target.value)}
                   />
                   <input
                     aria-label="폰트 크기 값"
@@ -716,12 +1205,37 @@ function App() {
                     min={FONT_SIZE_RANGE.min}
                     max={FONT_SIZE_RANGE.max}
                     value={questionFontSize(selected)}
-                    onChange={(event) => patchQuestionSizing("fontSize", event.target.value)}
+                    onChange={(event) => patchQuestionLayout("fontSize", event.target.value)}
+                  />
+                </div>
+              </label>
+              <label className={fieldLabelClassName(questionFieldKey(selected.id, "spacing"), "sizing-label")}>
+                <span>문제 간격</span>
+                <div className="range-line">
+                  <input
+                    ref={bindField(questionFieldKey(selected.id, "spacing"))}
+                    type="range"
+                    min={QUESTION_SPACING_RANGE.min}
+                    max={QUESTION_SPACING_RANGE.max}
+                    value={questionSpacing(selected)}
+                    onChange={(event) => patchQuestionLayout("spacing", event.target.value)}
+                  />
+                  <input
+                    aria-label="문제 간격 값"
+                    className="percent-input"
+                    type="number"
+                    min={QUESTION_SPACING_RANGE.min}
+                    max={QUESTION_SPACING_RANGE.max}
+                    value={questionSpacing(selected)}
+                    onChange={(event) => patchQuestionLayout("spacing", event.target.value)}
                   />
                 </div>
               </label>
               <button className="apply-all" onClick={applySizingToAllQuestions}>
-                전체 문제에 적용
+                크기/폰트 전체 적용
+              </button>
+              <button className="apply-all" onClick={applySpacingToAllQuestions}>
+                간격 전체 적용
               </button>
               <div className="question-edit-actions">
                 <button onClick={duplicateQuestion}>문제 복사</button>
@@ -730,6 +1244,26 @@ function App() {
                 </button>
               </div>
             </div>
+
+            <label className="wide">
+              현재 문제 페이지
+              <select value={selected.pageId} onChange={(event) => moveSelectedToPage(event.target.value)}>
+                {document.pages.map((page, index) => (
+                  <option key={page.id} value={page.id}>
+                    {page.title || `${index + 1}쪽`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="page-move-actions wide">
+              <button disabled={activePageIndex <= 0} onClick={() => moveSelectedToAdjacentPage(-1)}>
+                이전 페이지로
+              </button>
+              <button disabled={activePageIndex >= document.pages.length - 1} onClick={() => moveSelectedToAdjacentPage(1)}>
+                다음 페이지로
+              </button>
+            </div>
+
             <label className={fieldLabelClassName(documentFieldKey("examTitle"), "wide")}>
               시험지 제목
               <input
@@ -822,13 +1356,15 @@ function App() {
               />
             </label>
           </div>
-        ) : null}
+        ) : (
+          <div className="empty-inspector">문항을 추가하거나 다른 페이지에서 문항을 선택하세요.</div>
+        )}
       </aside>
     </div>
   );
 }
 
 const rootElement = document.getElementById("root");
-const root = rootElement._latexVibeCoderRoot || createRoot(rootElement);
-rootElement._latexVibeCoderRoot = root;
+const root = rootElement._problemEditorRoot || createRoot(rootElement);
+rootElement._problemEditorRoot = root;
 root.render(<App />);
