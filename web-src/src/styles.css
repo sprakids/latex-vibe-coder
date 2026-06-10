@@ -540,7 +540,7 @@ textarea {
   height: var(--paper-height);
   min-height: var(--paper-height);
   overflow: hidden;
-  padding: 21mm 18mm 24mm;
+  padding: 23mm 22mm 18mm;
   background: white;
   color: black;
   font-family: "HCR Batang", "HANBatang", "Hancom Batang", Batang, serif;
@@ -554,20 +554,30 @@ textarea {
 
 .exam-title {
   font-weight: 700;
-  font-size: 15pt;
+  font-size: 11.2pt;
 }
 
 .exam-rule {
   height: 0;
-  margin: 10pt 0 14pt;
+  margin: 7pt 0 9pt;
   border-top: 0.45pt solid black;
+}
+
+.exam-header-cover .exam-rule:first-of-type {
+  margin-top: 7pt;
+  margin-bottom: 10pt;
+}
+
+.exam-header-cover .exam-rule:last-of-type {
+  margin-top: 9pt;
+  margin-bottom: 0;
 }
 
 .exam-meta {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   align-items: end;
-  font-size: 10.6pt;
+  font-size: 8.7pt;
   font-weight: 700;
 }
 
@@ -582,44 +592,72 @@ textarea {
 }
 
 .exam-meta strong {
-  font-size: 15.8pt;
+  font-size: 12.2pt;
+}
+
+.exam-header-running {
+  padding-top: 2mm;
+}
+
+.exam-running-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: end;
+  font-size: 8.4pt;
+  font-weight: 700;
+}
+
+.exam-running-meta span:first-child {
+  text-align: left;
+}
+
+.exam-running-meta strong {
+  text-align: center;
+}
+
+.exam-running-meta span:last-child {
+  text-align: right;
 }
 
 .exam-columns {
   column-count: 2;
-  column-gap: 38pt;
+  column-gap: 14mm;
   column-rule: 0.25pt solid #bcbcbc;
-  margin-top: 18pt;
-  font-size: 9.35pt;
-  line-height: 1.36;
+  margin-top: 13pt;
+  font-size: 8.9pt;
+  line-height: 1.32;
+}
+
+.exam-header-running + .exam-columns {
+  margin-top: 10pt;
 }
 
 .exam-question {
   --question-margin-bottom: 8pt;
-  --question-font-size: 9.35pt;
+  --question-font-size: 8.9pt;
   --question-heading-gap: 4pt;
-  --question-heading-margin-bottom: 3pt;
-  --question-heading-font-size: 10.2pt;
+  --question-heading-margin-bottom: 2.5pt;
+  --question-heading-font-size: 9.4pt;
   --question-score-margin-left: 2pt;
-  --question-score-font-size: 9pt;
-  --question-paragraph-margin-bottom: 4pt;
+  --question-score-font-size: 8.4pt;
+  --question-paragraph-margin-bottom: 3.4pt;
   --question-choice-margin-top: 2pt;
-  --question-choice-gap: 5pt;
-  --question-choice-margin-bottom: 1.2pt;
-  --question-choice-mark-width: 12pt;
-  --question-notice-margin-top: 4pt;
-  --question-notice-margin-bottom: 5pt;
-  --question-notice-padding-y: 8pt;
-  --question-notice-padding-x: 9pt;
+  --question-choice-gap: 4.4pt;
+  --question-choice-margin-bottom: 1pt;
+  --question-choice-mark-width: 10.5pt;
+  --question-notice-margin-top: 3.5pt;
+  --question-notice-margin-bottom: 4.5pt;
+  --question-notice-padding-y: 6.5pt;
+  --question-notice-padding-x: 7.5pt;
   --question-table-margin-top: 5pt;
   --question-table-margin-bottom: 6pt;
-  --question-table-font-size: 8.3pt;
-  --question-table-padding-y: 3pt;
-  --question-table-padding-x: 4pt;
+  --question-table-font-size: 7.7pt;
+  --question-table-padding-y: 2.6pt;
+  --question-table-padding-x: 3.4pt;
   break-inside: avoid;
   margin: 0 0 var(--question-margin-bottom);
   font-size: var(--question-font-size);
-  line-height: 1.36;
+  line-height: 1.32;
 }
 
 .preview-question-clickable {
@@ -746,9 +784,9 @@ textarea {
 
 .exam-footer {
   position: absolute;
-  right: 18mm;
-  bottom: 14mm;
-  left: 18mm;
+  right: 22mm;
+  bottom: 9mm;
+  left: 22mm;
   font-size: 7.7pt;
 }
 

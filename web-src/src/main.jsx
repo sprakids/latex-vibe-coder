@@ -105,26 +105,26 @@ function questionStyle(question) {
   const effectiveFontScale = sizeScale * fontScale;
   return {
     "--question-margin-bottom": pt(questionSpacing(question) * sizeScale),
-    "--question-font-size": pt(9.35 * effectiveFontScale),
+    "--question-font-size": pt(8.9 * effectiveFontScale),
     "--question-heading-gap": pt(4 * sizeScale),
-    "--question-heading-margin-bottom": pt(3 * sizeScale),
-    "--question-heading-font-size": pt(10.2 * effectiveFontScale),
+    "--question-heading-margin-bottom": pt(2.5 * sizeScale),
+    "--question-heading-font-size": pt(9.4 * effectiveFontScale),
     "--question-score-margin-left": pt(2 * sizeScale),
-    "--question-score-font-size": pt(9 * effectiveFontScale),
-    "--question-paragraph-margin-bottom": pt(4 * sizeScale),
+    "--question-score-font-size": pt(8.4 * effectiveFontScale),
+    "--question-paragraph-margin-bottom": pt(3.4 * sizeScale),
     "--question-choice-margin-top": pt(2 * sizeScale),
-    "--question-choice-gap": pt(5 * sizeScale),
-    "--question-choice-margin-bottom": pt(1.2 * sizeScale),
-    "--question-choice-mark-width": pt(12 * sizeScale),
-    "--question-notice-margin-top": pt(4 * sizeScale),
-    "--question-notice-margin-bottom": pt(5 * sizeScale),
-    "--question-notice-padding-y": pt(8 * sizeScale),
-    "--question-notice-padding-x": pt(9 * sizeScale),
+    "--question-choice-gap": pt(4.4 * sizeScale),
+    "--question-choice-margin-bottom": pt(1 * sizeScale),
+    "--question-choice-mark-width": pt(10.5 * sizeScale),
+    "--question-notice-margin-top": pt(3.5 * sizeScale),
+    "--question-notice-margin-bottom": pt(4.5 * sizeScale),
+    "--question-notice-padding-y": pt(6.5 * sizeScale),
+    "--question-notice-padding-x": pt(7.5 * sizeScale),
     "--question-table-margin-top": pt(5 * sizeScale),
     "--question-table-margin-bottom": pt(6 * sizeScale),
-    "--question-table-font-size": pt(8.3 * effectiveFontScale),
-    "--question-table-padding-y": pt(3 * sizeScale),
-    "--question-table-padding-x": pt(4 * sizeScale),
+    "--question-table-font-size": pt(7.7 * effectiveFontScale),
+    "--question-table-padding-y": pt(2.6 * sizeScale),
+    "--question-table-padding-x": pt(3.4 * sizeScale),
   };
 }
 
@@ -534,33 +534,52 @@ function ExamPreview({ activeFieldKey, document, onPreviewEdit, page, pageNumber
   const titleTarget = { field: "title" };
   const formTarget = { field: "form" };
   const copyrightTarget = { field: "copyright" };
+  const isFirstPage = pageNumber === 1;
 
   return (
     <article className="exam-page">
-      <header className="exam-header">
-        <div
-          className={previewEditableClassName("exam-title", activeFieldKey, examTitleTarget)}
-          {...previewEditableProps(examTitleTarget, onPreviewEdit)}
-        >
-          {document.examTitle || ""}
-        </div>
-        <div className="exam-rule" />
-        <div className="exam-meta">
-          <span>제3교시</span>
-          <strong
-            className={previewEditableClassName("", activeFieldKey, titleTarget)}
-            {...previewEditableProps(titleTarget, onPreviewEdit)}
-          >
-            {subject}
-          </strong>
-          <span
-            className={previewEditableClassName("", activeFieldKey, formTarget)}
-            {...previewEditableProps(formTarget, onPreviewEdit)}
-          >
-            {document.form || ""}
-          </span>
-        </div>
-        <div className="exam-rule" />
+      <header className={isFirstPage ? "exam-header exam-header-cover" : "exam-header exam-header-running"}>
+        {isFirstPage ? (
+          <>
+            <div
+              className={previewEditableClassName("exam-title", activeFieldKey, examTitleTarget)}
+              {...previewEditableProps(examTitleTarget, onPreviewEdit)}
+            >
+              {document.examTitle || ""}
+            </div>
+            <div className="exam-rule" />
+            <div className="exam-meta">
+              <span>제3교시</span>
+              <strong
+                className={previewEditableClassName("", activeFieldKey, titleTarget)}
+                {...previewEditableProps(titleTarget, onPreviewEdit)}
+              >
+                {subject}
+              </strong>
+              <span
+                className={previewEditableClassName("", activeFieldKey, formTarget)}
+                {...previewEditableProps(formTarget, onPreviewEdit)}
+              >
+                {document.form || ""}
+              </span>
+            </div>
+            <div className="exam-rule" />
+          </>
+        ) : (
+          <>
+            <div className="exam-running-meta">
+              <span>{pageNumber}</span>
+              <strong
+                className={previewEditableClassName("", activeFieldKey, formTarget)}
+                {...previewEditableProps(formTarget, onPreviewEdit)}
+              >
+                {document.form || ""}
+              </strong>
+              <span>{pageNumber} / {totalPages}</span>
+            </div>
+            <div className="exam-rule" />
+          </>
+        )}
       </header>
       <main className="exam-columns">
         {questions.length ? (
